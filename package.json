@@ -1,0 +1,87 @@
+{
+  "name": "prompt-session-tracker",
+  "displayName": "Prompt Session Tracker",
+  "description": "Track AI coding sessions from first prompt to git push — Claude Code, Gemini CLI, Codex CLI, Copilot",
+  "version": "0.1.0",
+  "publisher": "prompt-tracker",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "activationEvents": ["workspaceContains:.git"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "promptTracker.endSession",
+        "title": "End Session Manually",
+        "category": "Prompt Tracker"
+      },
+      {
+        "command": "promptTracker.openSidebar",
+        "title": "Open Session Panel",
+        "category": "Prompt Tracker"
+      },
+      {
+        "command": "promptTracker.showStatus",
+        "title": "Show Session Status",
+        "category": "Prompt Tracker"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "promptSessions.sidebar",
+          "name": "Prompt Sessions"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Prompt Session Tracker",
+      "properties": {
+        "promptTracker.connectionString": {
+          "type": "string",
+          "default": "",
+          "description": "Neon PostgreSQL connection string (postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname?sslmode=require). The extension creates the prompt_sessions table automatically on first sync."
+        },
+        "promptTracker.syncOnPush": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sync session to remote on git push"
+        },
+        "promptTracker.autoInjectGitHooks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Install post-commit and post-push git hooks for reliable event detection"
+        },
+        "promptTracker.agents": {
+          "type": "array",
+          "default": ["claude-code", "gemini-cli", "codex-cli", "copilot"],
+          "description": "Enabled agent watchers"
+        },
+        "promptTracker.agentLogDirs": {
+          "type": "object",
+          "default": {},
+          "description": "Override default log directories per agent: { \"claude-code\": \"~/.claude/projects\", \"gemini-cli\": \"~/.gemini/sessions\", \"codex-cli\": \"~/.codex/sessions\" }"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "build:prod": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "package": "npm run build:prod && vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.26.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
+  }
+}
