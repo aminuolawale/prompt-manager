@@ -3,14 +3,12 @@ import { AgentWatcher, TurnCallback } from './AgentWatcher';
 import { ClaudeCodeWatcher } from './ClaudeCodeWatcher';
 import { GeminiWatcher } from './GeminiWatcher';
 import { CodexWatcher } from './CodexWatcher';
-import { CopilotWatcher } from './CopilotWatcher';
 
 export class WatcherRegistry {
   private readonly all: AgentWatcher[] = [
     new ClaudeCodeWatcher(),
     new GeminiWatcher(),
-    new CodexWatcher(),
-    new CopilotWatcher()
+    new CodexWatcher()
   ];
 
   private active: AgentWatcher[] = [];
@@ -18,7 +16,7 @@ export class WatcherRegistry {
   async initialize(): Promise<void> {
     const enabled = vscode.workspace
       .getConfiguration('promptTracker')
-      .get<string[]>('agents', ['claude-code', 'gemini-cli', 'codex-cli', 'copilot']);
+      .get<string[]>('agents', ['claude-code', 'gemini-cli', 'codex-cli']);
 
     const checks = await Promise.all(
       this.all

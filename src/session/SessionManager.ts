@@ -99,7 +99,6 @@ export class SessionManager {
     if (n.startsWith('claude')) return 'claude-code';
     if (n.startsWith('gemini')) return 'gemini-cli';
     if (n.startsWith('codex') || n.startsWith('o1') || n.startsWith('o3') || n.startsWith('gpt')) return 'codex-cli';
-    if (n.includes('copilot')) return 'copilot';
     return 'unknown';
   }
 

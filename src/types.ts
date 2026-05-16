@@ -21,7 +21,6 @@ export type AgentProvider =
   | 'claude-code'
   | 'gemini-cli'
   | 'codex-cli'
-  | 'copilot'
   | 'continue'
   | 'aider'
   | 'unknown';

@@ -1,7 +1,7 @@
 {
   "name": "prompt-session-tracker",
   "displayName": "Prompt Session Tracker",
-  "description": "Track AI coding sessions from first prompt to git push. Supports Claude Code, Gemini CLI, Codex CLI, and GitHub Copilot. Syncs to Neon PostgreSQL.",
+  "description": "Track AI coding sessions from first prompt to git push. Supports Claude Code, Gemini CLI, and Codex CLI. Syncs to Neon PostgreSQL.",
   "version": "0.1.0",
   "publisher": "prompt-tracker",
   "icon": "resources/icon.png",
@@ -11,7 +11,7 @@
   },
   "license": "MIT",
   "keywords": [
-    "ai", "copilot", "claude", "gemini", "codex",
+    "ai", "claude", "gemini", "codex",
     "session", "tracking", "productivity", "git", "analytics"
   ],
   "engines": { "vscode": "^1.90.0" },
@@ -83,7 +83,7 @@
         },
         "promptTracker.agents": {
           "type": "array",
-          "default": ["claude-code", "gemini-cli", "codex-cli", "copilot"],
+          "default": ["claude-code", "gemini-cli", "codex-cli"],
           "description": "Enabled agent watchers."
         },
         "promptTracker.agentLogDirs": {
