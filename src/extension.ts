@@ -8,6 +8,9 @@ import { LocalServer } from './server/LocalServer';
 import { SyncService } from './sync/SyncService';
 import { StatusBar } from './ui/StatusBar';
 import { SidebarProvider } from './ui/SidebarProvider';
+import { AuthStore } from './auth/AuthStore';
+import { GoogleAuth } from './auth/GoogleAuth';
+import { UserInfo } from './types';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const fileManager = new FileManager();
@@ -18,23 +21,59 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const statusBar = new StatusBar();
   const sidebar = new SidebarProvider(context.extensionUri);
   const server = new LocalServer();
+  const authStore = new AuthStore(context.secrets);
 
-  // Bind workspace → workspaceId for routing hook callbacks
+  const port = await server.start();
+  const googleAuth = new GoogleAuth(server);
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+
+  const applyUser = (user: UserInfo | null) => {
+    sessionManager.setUser(user);
+    sidebar.updateUser(user);
+    statusBar.updateUser(user);
+  };
+
+  // Restore persisted user on startup
+  const storedUser = await authStore.getUser();
+  if (storedUser) applyUser(storedUser);
+
+  const signIn = async () => {
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Signing in with Google…', cancellable: false },
+        async () => {
+          const { user, refreshToken } = await googleAuth.signIn();
+          await authStore.saveUser(user, refreshToken);
+          applyUser(user);
+          vscode.window.showInformationMessage(`Prompt Tracker: signed in as ${user.email}`);
+        }
+      );
+    } catch (err) {
+      vscode.window.showErrorMessage(`Prompt Tracker: sign-in failed — ${err}`);
+    }
+  };
+
+  const signOut = async () => {
+    const refreshToken = await authStore.getRefreshToken();
+    if (refreshToken) await googleAuth.revokeToken(refreshToken);
+    await authStore.clear();
+    applyUser(null);
+    vscode.window.showInformationMessage('Prompt Tracker: signed out.');
+  };
+
+  // ── Git hooks ───────────────────────────────────────────────────────────────
+
   const workspaceIdToRoot = new Map<string, string>();
 
-  const registerWorkspace = (root: string, port: number) => {
+  const registerWorkspace = (root: string) => {
     const id = HookInstaller.workspaceId(root);
     workspaceIdToRoot.set(id, root);
-
     if (vscode.workspace.getConfiguration('promptTracker').get<boolean>('autoInjectGitHooks', true)) {
       hookInstaller.install(root, port);
     }
   };
 
-  // Start the local server first so we have a port for hook scripts
-  const port = await server.start();
-
-  // Route hook callbacks through GitWatcher
   const gitWatcher = new GitWatcher(
     (root, commit) => sessionManager.recordCommit(root, commit),
     async (root, push) => {
@@ -53,59 +92,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (root) await gitWatcher.handleHookPush(root, remote, branch);
   });
 
-  // Mirror session changes to UI
+  // ── UI updates ──────────────────────────────────────────────────────────────
+
+  const refreshUI = (root: string) => {
+    const session = sessionManager.get(root) ?? null;
+    statusBar.update(session);
+    sidebar.update(session);
+  };
+
   context.subscriptions.push(
     sessionManager.onSessionChanged(root => {
-      const activeRoot = activeWorkspaceRoot();
-      if (root === activeRoot) {
-        const session = sessionManager.get(root) ?? null;
-        statusBar.update(session);
-        sidebar.update(session);
-      }
+      if (root === activeWorkspaceRoot()) refreshUI(root);
     })
   );
 
-  // Register sidebar webview
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewType, sidebar)
   );
 
-  // Initialize agent watchers (async, non-blocking)
-  watcherRegistry.initialize().then(() => {
-    for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      watcherRegistry.startAll(folder.uri.fsPath, (_agentId, turn) => {
-        sessionManager.appendTurn(folder.uri.fsPath, turn);
-      });
-    }
-  });
+  // ── Workspace activation ────────────────────────────────────────────────────
 
-  // Activate each workspace folder
   const activateFolder = async (folder: vscode.WorkspaceFolder) => {
     const root = folder.uri.fsPath;
-    registerWorkspace(root, port);
+    registerWorkspace(root);
     await sessionManager.retryFailed(root);
-
-    // Refresh UI for the initial active folder
-    if (folder === vscode.workspace.workspaceFolders?.[0]) {
-      statusBar.update(sessionManager.get(root) ?? null);
-      sidebar.update(sessionManager.get(root) ?? null);
-    }
+    if (folder === vscode.workspace.workspaceFolders?.[0]) refreshUI(root);
   };
 
   await gitWatcher.initialize();
+
+  watcherRegistry.initialize().then(() => {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      watcherRegistry.startAll(folder.uri.fsPath, (_id, turn) =>
+        sessionManager.appendTurn(folder.uri.fsPath, turn)
+      );
+    }
+  });
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     await activateFolder(folder);
   }
 
-  // Handle workspace folder changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async e => {
       for (const added of e.added) {
         await activateFolder(added);
-        watcherRegistry.startAll(added.uri.fsPath, (_agentId, turn) => {
-          sessionManager.appendTurn(added.uri.fsPath, turn);
-        });
+        watcherRegistry.startAll(added.uri.fsPath, (_id, turn) =>
+          sessionManager.appendTurn(added.uri.fsPath, turn)
+        );
       }
       for (const removed of e.removed) {
         const root = removed.uri.fsPath;
@@ -113,32 +147,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         hookInstaller.uninstall(root);
         workspaceIdToRoot.delete(HookInstaller.workspaceId(root));
       }
-    })
-  );
+    }),
 
-  // Update UI when active editor changes workspace folder
-  context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (!editor) return;
       const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-      if (!folder) return;
-      const root = folder.uri.fsPath;
-      statusBar.update(sessionManager.get(root) ?? null);
-      sidebar.update(sessionManager.get(root) ?? null);
+      if (folder) refreshUI(folder.uri.fsPath);
     })
   );
 
-  // Commands
+  // ── Commands ────────────────────────────────────────────────────────────────
+
   context.subscriptions.push(
+    vscode.commands.registerCommand('promptTracker.signIn', signIn),
+
+    vscode.commands.registerCommand('promptTracker.signOut', signOut),
+
     vscode.commands.registerCommand('promptTracker.endSession', async () => {
       const root = activeWorkspaceRoot();
       if (!root) return;
-
       const answer = await vscode.window.showQuickPick(['Yes, end session', 'Cancel'], {
         placeHolder: 'End and sync the current session now?'
       });
       if (answer !== 'Yes, end session') return;
-
       statusBar.showSyncing();
       await sessionManager.closeSession(root, {
         timestamp: new Date().toISOString(),
@@ -159,16 +190,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage('Prompt Tracker: no active session.');
         return;
       }
-      const agentSummary = session.agents
+      const agents = session.agents
         .map(a => `${a.name} (↑${a.totalTokensIn.toLocaleString()} ↓${a.totalTokensOut.toLocaleString()})`)
         .join(', ') || 'no agent turns yet';
       vscode.window.showInformationMessage(
-        `Prompt Tracker: ${session.conversation.length} turns · ${session.commits.length} commits · ${agentSummary}`
+        `Prompt Tracker: ${session.conversation.length} turns · ${session.commits.length} commits · ${agents}`
       );
     })
   );
 
-  // Cleanup on deactivation
+  // ── Cleanup ─────────────────────────────────────────────────────────────────
+
   context.subscriptions.push(
     { dispose: () => server.stop() },
     { dispose: () => sessionManager.dispose() },
@@ -188,6 +220,4 @@ function activeWorkspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
-export function deactivate(): void {
-  // subscriptions handle cleanup
-}
+export function deactivate(): void {}

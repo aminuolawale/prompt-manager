@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
-import { Session } from '../types';
+import { Session, UserInfo } from '../types';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   static readonly viewType = 'promptSessions.sidebar';
 
   private view?: vscode.WebviewView;
   private latestSession: Session | null = null;
+  private latestUser: UserInfo | null = null;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -21,20 +22,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.buildHtml();
     view.webview.onDidReceiveMessage(msg => {
-      if (msg.command === 'endSession') {
-        vscode.commands.executeCommand('promptTracker.endSession');
+      switch (msg.command) {
+        case 'endSession': vscode.commands.executeCommand('promptTracker.endSession'); break;
+        case 'signIn':    vscode.commands.executeCommand('promptTracker.signIn'); break;
+        case 'signOut':   vscode.commands.executeCommand('promptTracker.signOut'); break;
       }
     });
-    if (this.latestSession) this.push(this.latestSession);
+    this.pushAll();
   }
 
   update(session: Session | null): void {
     this.latestSession = session;
-    if (this.view?.visible) this.push(session);
+    if (this.view?.visible) this.pushAll();
   }
 
-  private push(session: Session | null): void {
-    this.view?.webview.postMessage({ command: 'update', session });
+  updateUser(user: UserInfo | null): void {
+    this.latestUser = user;
+    if (this.view?.visible) this.pushAll();
+  }
+
+  private pushAll(): void {
+    this.view?.webview.postMessage({ command: 'update', session: this.latestSession, user: this.latestUser });
   }
 
   private buildHtml(): string {
@@ -42,7 +50,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https:;">
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   body {
@@ -111,11 +119,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     font-size: 12px;
   }
   button:hover { background: var(--vscode-button-hoverBackground); }
+  button.secondary {
+    background: var(--vscode-button-secondaryBackground, #3c3c3c);
+    color: var(--vscode-button-secondaryForeground, #ccc);
+  }
+  button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
   #empty { opacity: .5; font-style: italic; text-align: center; padding: 30px 10px; font-size: 12px; }
   #content { display: none; }
+  .user-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .user-avatar-placeholder {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--vscode-badge-background, #444);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; flex-shrink: 0;
+    color: var(--vscode-badge-foreground, #fff);
+  }
+  .user-info { flex: 1; min-width: 0; }
+  .user-name { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-email { font-size: 10px; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sign-out-btn { font-size: 10px; padding: 3px 8px; margin: 0; width: auto; }
+  #auth-section { margin-bottom: 4px; }
 </style>
 </head>
 <body>
+<div id="auth-section"></div>
 <div id="empty">No active session.<br>Start prompting to begin tracking.</div>
 <div id="content">
   <h3>Active Session</h3>
@@ -143,13 +182,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <script>
   const vscode = acquireVsCodeApi();
   let session = null;
+  let user = null;
   let ticker = null;
 
   window.addEventListener('message', e => {
-    if (e.data.command === 'update') { session = e.data.session; render(); }
+    if (e.data.command === 'update') {
+      session = e.data.session;
+      user = e.data.user;
+      render();
+    }
   });
 
   function render() {
+    renderAuth();
     const hasData = session && session.conversation.length > 0;
     document.getElementById('empty').style.display = hasData ? 'none' : 'block';
     document.getElementById('content').style.display = hasData ? 'block' : 'none';
@@ -221,9 +266,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function endSession() {
-    vscode.postMessage({ command: 'endSession' });
+  function renderAuth() {
+    const el = document.getElementById('auth-section');
+    if (user) {
+      const initial = (user.name || user.email || '?')[0].toUpperCase();
+      const avatar = user.picture
+        ? '<img class="user-avatar" src="' + esc(user.picture) + '" alt="">'
+        : '<div class="user-avatar-placeholder">' + esc(initial) + '</div>';
+      el.innerHTML =
+        '<div class="card user-card">' +
+        avatar +
+        '<div class="user-info"><div class="user-name">' + esc(user.name) + '</div>' +
+        '<div class="user-email">' + esc(user.email) + '</div></div>' +
+        '<button class="secondary sign-out-btn" onclick="signOut()">Sign out</button>' +
+        '</div>';
+    } else {
+      el.innerHTML =
+        '<button onclick="signIn()" style="margin-top:0">Sign in with Google</button>';
+    }
   }
+
+  function endSession() { vscode.postMessage({ command: 'endSession' }); }
+  function signIn()     { vscode.postMessage({ command: 'signIn' }); }
+  function signOut()    { vscode.postMessage({ command: 'signOut' }); }
 </script>
 </body>
 </html>`;

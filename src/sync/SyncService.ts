@@ -23,6 +23,8 @@ export class SyncService {
     await sql`
       CREATE TABLE IF NOT EXISTS prompt_sessions (
         id              TEXT PRIMARY KEY,
+        user_id         TEXT,
+        user_email      TEXT,
         workspace       TEXT NOT NULL,
         started_at      TIMESTAMPTZ NOT NULL,
         pushed_at       TIMESTAMPTZ,
@@ -52,13 +54,16 @@ export class SyncService {
 
     await sql`
       INSERT INTO prompt_sessions (
-        id, workspace, started_at, pushed_at,
+        id, user_id, user_email,
+        workspace, started_at, pushed_at,
         agents, token_total_in, token_total_out, cache_tokens,
         message_count, commit_count,
         commits, conversation,
         push_remote, push_branch
       ) VALUES (
         ${session.id},
+        ${session.userId ?? null},
+        ${session.userEmail ?? null},
         ${session.workspaceRoot},
         ${session.startedAt},
         ${session.push?.timestamp ?? null},

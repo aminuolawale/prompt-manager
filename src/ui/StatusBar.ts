@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { Session } from '../types';
+import { Session, UserInfo } from '../types';
 
 export class StatusBar {
   private item: vscode.StatusBarItem;
+  private user: UserInfo | null = null;
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -11,10 +12,17 @@ export class StatusBar {
     this.update(null);
   }
 
+  updateUser(user: UserInfo | null): void {
+    this.user = user;
+    // Re-render with current session to pick up sign-in state
+    this.update(null);
+  }
+
   update(session: Session | null): void {
     if (!session || session.status !== 'active') {
+      const userHint = this.user ? ` · ${this.user.email}` : ' · not signed in';
       this.item.text = '$(circle-outline) No session';
-      this.item.tooltip = 'Prompt Tracker — click to open panel';
+      this.item.tooltip = `Prompt Tracker${userHint} — click to open panel`;
       this.item.color = undefined;
       return;
     }

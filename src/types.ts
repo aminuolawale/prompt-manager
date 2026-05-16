@@ -1,4 +1,9 @@
-import type * as vscode from 'vscode';
+export interface UserInfo {
+  id: string;       // Google sub (stable unique ID)
+  email: string;
+  name: string;
+  picture: string;
+}
 
 export interface ConversationTurn {
   seq: number;
@@ -50,6 +55,8 @@ export interface Session {
   id: string;
   workspaceRoot: string;
   startedAt: string;
+  userId: string | null;
+  userEmail: string | null;
   agents: AgentSummary[];
   conversation: ConversationTurn[];
   commits: CommitInfo[];

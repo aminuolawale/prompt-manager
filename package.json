@@ -1,15 +1,38 @@
 {
   "name": "prompt-session-tracker",
   "displayName": "Prompt Session Tracker",
-  "description": "Track AI coding sessions from first prompt to git push — Claude Code, Gemini CLI, Codex CLI, Copilot",
+  "description": "Track AI coding sessions from first prompt to git push. Supports Claude Code, Gemini CLI, Codex CLI, and GitHub Copilot. Syncs to Neon PostgreSQL.",
   "version": "0.1.0",
   "publisher": "prompt-tracker",
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/prompt-session-tracker"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ai", "copilot", "claude", "gemini", "codex",
+    "session", "tracking", "productivity", "git", "analytics"
+  ],
   "engines": { "vscode": "^1.90.0" },
-  "categories": ["Other"],
+  "categories": ["Other", "Machine Learning"],
   "activationEvents": ["workspaceContains:.git"],
+  "extensionDependencies": ["vscode.git"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "promptTracker.signIn",
+        "title": "Sign In with Google",
+        "category": "Prompt Tracker",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "promptTracker.signOut",
+        "title": "Sign Out",
+        "category": "Prompt Tracker",
+        "icon": "$(sign-out)"
+      },
       {
         "command": "promptTracker.endSession",
         "title": "End Session Manually",
@@ -38,6 +61,11 @@
     "configuration": {
       "title": "Prompt Session Tracker",
       "properties": {
+        "promptTracker.googleClientId": {
+          "type": "string",
+          "default": "",
+          "description": "Google OAuth 2.0 Client ID. Create one at console.cloud.google.com → APIs & Services → Credentials → Desktop app."
+        },
         "promptTracker.connectionString": {
           "type": "string",
           "default": "",
@@ -46,17 +74,17 @@
         "promptTracker.syncOnPush": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically sync session to remote on git push"
+          "description": "Automatically sync session to Neon on git push."
         },
         "promptTracker.autoInjectGitHooks": {
           "type": "boolean",
           "default": true,
-          "description": "Install post-commit and post-push git hooks for reliable event detection"
+          "description": "Install post-commit and post-push git hooks for reliable event detection."
         },
         "promptTracker.agents": {
           "type": "array",
           "default": ["claude-code", "gemini-cli", "codex-cli", "copilot"],
-          "description": "Enabled agent watchers"
+          "description": "Enabled agent watchers."
         },
         "promptTracker.agentLogDirs": {
           "type": "object",

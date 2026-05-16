@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { Session, ConversationTurn, CommitInfo, PushInfo, AgentSummary, AgentProvider } from '../types';
+import { Session, ConversationTurn, CommitInfo, PushInfo, AgentSummary, AgentProvider, UserInfo } from '../types';
 import { FileManager } from './FileManager';
 import { SyncService } from '../sync/SyncService';
 
 export class SessionManager {
   private sessions = new Map<string, Session>();
+  private currentUser: UserInfo | null = null;
 
   private _onSessionChanged = new vscode.EventEmitter<string>();
   readonly onSessionChanged = this._onSessionChanged.event;
@@ -14,6 +15,19 @@ export class SessionManager {
     private fileManager: FileManager,
     private syncService: SyncService
   ) {}
+
+  setUser(user: UserInfo | null): void {
+    this.currentUser = user;
+    // Stamp any in-progress sessions with the newly signed-in user
+    for (const session of this.sessions.values()) {
+      if (!session.userId && user) {
+        session.userId = user.id;
+        session.userEmail = user.email;
+        this.fileManager.write(session.workspaceRoot, session);
+        this._onSessionChanged.fire(session.workspaceRoot);
+      }
+    }
+  }
 
   getOrCreate(root: string): Session {
     if (this.sessions.has(root)) return this.sessions.get(root)!;
@@ -28,6 +42,8 @@ export class SessionManager {
       id: crypto.randomUUID(),
       workspaceRoot: root,
       startedAt: new Date().toISOString(),
+      userId: this.currentUser?.id ?? null,
+      userEmail: this.currentUser?.email ?? null,
       agents: [],
       conversation: [],
       commits: [],

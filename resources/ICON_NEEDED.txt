@@ -1,0 +1,2 @@
+Place a 128x128 PNG icon here named icon.png before publishing.
+The marketplace requires it.
